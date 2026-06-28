@@ -3,7 +3,7 @@ import time
 from src.instrumentation import GPUInstrumentation, GPUMetrics
 
 
-def test_metrics_fields():
+def test_metrics_fields(): # tests that metrics field access works w/ hard-coded mock numbers
     m = GPUMetrics(
         timestamp=1.0,
         gpu_utilization_pct=50.0,
@@ -20,23 +20,23 @@ def test_metrics_fields():
 
 
 class TestGPUInstrumentation:
+    # pytest hooks that initialize and shut down NVML for each test:
     def setup_method(self):
         self.inst = GPUInstrumentation()
-
     def teardown_method(self):
         self.inst.close()
 
-    def test_collect_returns_metrics(self):
+    def test_collect_returns_metrics(self): # confirms collect() function returns GPUMetrics object
         assert isinstance(self.inst.collect(), GPUMetrics)
 
-    def test_timestamp_is_recent(self):
+    def test_timestamp_is_recent(self): # confirms timestamp is accurate (timestamp is at least same as before value, so timestamp is made at time of collection, not class construction)
         before = time.time()
         assert self.inst.collect().timestamp >= before
 
-    def test_utilization_in_range(self):
+    def test_utilization_in_range(self): # confirms utilization is a percent between 0 and 100
         assert 0.0 <= self.inst.collect().gpu_utilization_pct <= 100.0
 
-    def test_memory_used_within_total(self):
+    def test_memory_used_within_total(self): # confirms memory used is within otal range of 0 and total memory
         m = self.inst.collect()
         assert 0.0 < m.memory_used_mb <= m.memory_total_mb
 
