@@ -40,7 +40,7 @@ class TestGPUInstrumentation:
         m = self.inst.collect()
         assert 0.0 < m.memory_used_mb <= m.memory_total_mb
 
-    def test_memory_total_matches_rtx3090(self):
+    def test_memory_total_matches_rtx3090(self): # confirms collected total memory value matches hardware total memory (retrieved number through first real test)
         assert self.inst.collect().memory_total_mb == 24564.0
 
     def test_temperature_in_range(self):
