@@ -1,6 +1,9 @@
 # Claude Code
 CLAUDE.md
 
+# Environment variables
+.env
+
 # Virtual environment
 .venv/
 
@@ -12,7 +15,7 @@ __pycache__/
 .pytest_cache/
 
 # Database
-*.db
+gpu_validation.db
 *.sqlite
 
 # OS

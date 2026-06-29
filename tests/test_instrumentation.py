@@ -43,19 +43,19 @@ class TestGPUInstrumentation:
     def test_memory_total_matches_rtx3090(self): # confirms collected total memory value matches hardware total memory (retrieved number through first real test)
         assert self.inst.collect().memory_total_mb == 24564.0
 
-    def test_temperature_in_range(self):
+    def test_temperature_in_range(self): # confirms gpu temperature is within range
         assert 0.0 < self.inst.collect().temperature_c < 110.0
 
-    def test_power_draw_positive(self):
+    def test_power_draw_positive(self): # confirms power draw from gpu (even if idle) is above 0 + ensures mW -> W conversion is correct
         assert self.inst.collect().power_draw_w > 0.0
 
-    def test_clock_graphics_positive(self):
+    # confirms both clocks running:
+    def test_clock_graphics_positive(self):  
         assert self.inst.collect().clock_graphics_mhz > 0.0
-
     def test_clock_memory_positive(self):
         assert self.inst.collect().clock_memory_mhz > 0.0
 
-    def test_context_manager_closes_on_exit(self):
+    def test_context_manager_closes_on_exit(self): # confirms nvmlShutdown is called correctly after GPU metric collection
         with GPUInstrumentation() as inst:
             m = inst.collect()
         assert isinstance(m, GPUMetrics)
