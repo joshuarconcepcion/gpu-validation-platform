@@ -116,7 +116,7 @@ def log_analyst_report(run_id: str, report: str):
         """, (run_id, time.time(), report))
 
 
-def get_recent_metrics(limit: int = 20) -> list[dict]:
+def get_recent_metrics(limit: int = 20) -> list[dict]: # gets 20 most recent metric collections
     with _connect() as conn:
         rows = conn.execute("""
             SELECT * FROM gpu_metrics
@@ -126,7 +126,7 @@ def get_recent_metrics(limit: int = 20) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def get_run_history() -> list[dict]:
+def get_run_history() -> list[dict]: # gets history of validation runs
     with _connect() as conn:
         rows = conn.execute("""
             SELECT run_id, timestamp, overall_passed
@@ -136,7 +136,7 @@ def get_run_history() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def get_metrics_for_run(run_id: str) -> list[dict]:
+def get_metrics_for_run(run_id: str) -> list[dict]: # gets metrics based on inputted run_id
     with _connect() as conn:
         rows = conn.execute("""
             SELECT * FROM gpu_metrics
@@ -157,7 +157,7 @@ def get_analyst_report(run_id: str) -> str | None:
     return row["report_text"] if row else None
 
 
-def get_historical_averages() -> dict:
+def get_historical_averages() -> dict: # gets averages of all metrics, used in validator.py to detect regression
     with _connect() as conn:
         row = conn.execute("""
             SELECT
