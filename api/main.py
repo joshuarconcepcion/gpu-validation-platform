@@ -1,11 +1,21 @@
+"""FastAPI HTTP layer. This is the composition root: it is the only module
+allowed to import from hardware, validation, storage, and agents together,
+since its job is to wire those independent modules into request handlers."""
+
 import time
 import uuid
 from fastapi import FastAPI, HTTPException
 
-from src.instrumentation import GPUInstrumentation
-from src.workload import light_workload, medium_workload, stress_workload
-from src.validator import validate_metrics, detect_regression, generate_validation_summary
-from src.database import (
+from hardware.gpu_monitor import GPUInstrumentation
+from validation.benchmarks import (
+    light_workload,
+    medium_workload,
+    stress_workload,
+    validate_metrics,
+    detect_regression,
+    generate_validation_summary,
+)
+from storage.db import (
     init_db,
     log_metrics,
     log_validation_result,
@@ -16,9 +26,9 @@ from src.database import (
     get_analyst_report,
     get_historical_averages,
 )
-from src.analyst import analyze_validation_run
+from agents.analyst import analyze_validation_run
 
-app = FastAPI(title="GPU Validation Harness")
+app = FastAPI(title="GPU Validation Platform")
 
 init_db()
 
@@ -30,6 +40,8 @@ WORKLOADS = {
 
 
 def _run_validation(run_id: str, workload_result: dict | None = None) -> dict:
+    """Collect a metrics snapshot, validate it, check for regression, log everything,
+    and generate a Claude diagnostic report for the run."""
     with GPUInstrumentation() as gpu:
         metrics = gpu.collect()
 
@@ -43,6 +55,7 @@ def _run_validation(run_id: str, workload_result: dict | None = None) -> dict:
 
     if workload_result: # /validate does not run workload, so if statements prevents crashing
         log_workload_result(run_id, workload_result)
+        summary["workload"] = workload_result
 
     report = analyze_validation_run(summary)
     log_analyst_report(run_id, report)
@@ -56,14 +69,16 @@ def _run_validation(run_id: str, workload_result: dict | None = None) -> dict:
         "analyst_report": report,
     }
 
-# confirms server is running:
+
 @app.get("/health")
 def health():
+    """Confirm the API server is running."""
     return {"status": "ok", "timestamp": time.time()}
 
-# runs w/o workload for quick metrics, validation against thresholds, regression check, and Claude analysis
+
 @app.post("/validate")
 def validate():
+    """Collect a metrics snapshot and run threshold + regression checks and Claude analysis, without a workload."""
     run_id = str(uuid.uuid4()) # generates random unique ID and converts to string for run_id
     try:
         return _run_validation(run_id)
@@ -73,6 +88,7 @@ def validate():
 
 @app.post("/run/{workload_type}")
 def run_workload(workload_type: str):
+    """Run the named compute workload (light/medium/stress), then validate and analyze the resulting metrics."""
     if workload_type not in WORKLOADS:
         raise HTTPException(
             status_code=400,
@@ -86,14 +102,16 @@ def run_workload(workload_type: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# get's 20 most recent validation runs
+
 @app.get("/results")
 def get_results():
+    """Return the 20 most recent validation runs."""
     return {"results": get_run_history()}
 
-# returns metrics and Claude analysis based on inputted run_id
+
 @app.get("/results/{run_id}")
 def get_result_by_run_id(run_id: str):
+    """Return logged metrics and the Claude analyst report for a specific run_id."""
     metrics = get_metrics_for_run(run_id)
     if not metrics:
         raise HTTPException(status_code=404, detail=f"No data found for run_id: {run_id}")
@@ -104,9 +122,10 @@ def get_result_by_run_id(run_id: str):
         "analyst_report": get_analyst_report(run_id),
     }
 
-# regression check:
+
 @app.get("/regression")
 def regression_check():
+    """Collect a fresh metrics snapshot and compare it against historical averages for regressions."""
     with GPUInstrumentation() as gpu:
         metrics = gpu.collect()
 

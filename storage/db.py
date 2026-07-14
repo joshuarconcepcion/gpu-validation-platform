@@ -1,19 +1,24 @@
+"""SQLite schema and logging/query helpers for GPU metrics, validation results,
+workload results, and analyst reports."""
+
 import sqlite3
 import json
 import time
 from pathlib import Path
-from src.instrumentation import GPUMetrics
+from hardware.gpu_monitor import GPUMetrics
 
 DB_PATH = Path(__file__).parent.parent / "gpu_validation.db" # db file created at root
 
 
-def _connect() -> sqlite3.Connection: # helper function to eliminate .connect(DB_PATH) repetition
+def _connect() -> sqlite3.Connection:
+    """Open a SQLite connection to DB_PATH with row access by column name."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # allows column access by name instead of index
     return conn
 
 
 def init_db():
+    """Create all tables if they don't already exist."""
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS gpu_metrics (
@@ -59,8 +64,8 @@ def init_db():
             )
         """)
 
-# logs new metrics entry into existing gpu_metrics table:
 def log_metrics(run_id: str, metrics: GPUMetrics):
+    """Insert a GPU metrics snapshot for the given run."""
     with _connect() as conn:
         conn.execute("""
             INSERT INTO gpu_metrics (
@@ -82,16 +87,16 @@ def log_metrics(run_id: str, metrics: GPUMetrics):
             metrics.clock_memory_mhz,
         ))
 
-# logs new validation result into existing validation_results table:
 def log_validation_result(run_id: str, overall_passed: bool, results: dict):
+    """Insert a threshold validation result (pass/fail plus per-check detail) for the given run."""
     with _connect() as conn:
         conn.execute("""
             INSERT INTO validation_results (run_id, timestamp, overall_passed, results_json)
             VALUES (?, ?, ?, ?)
         """, (run_id, time.time(), int(overall_passed), json.dumps(results)))
 
-# logs new workload results into existing workload_results table:
 def log_workload_result(run_id: str, result: dict):
+    """Insert a compute workload result (throughput, peak memory) for the given run."""
     with _connect() as conn:
         conn.execute("""
             INSERT INTO workload_results (
@@ -109,6 +114,7 @@ def log_workload_result(run_id: str, result: dict):
 
 
 def log_analyst_report(run_id: str, report: str):
+    """Insert a Claude-generated diagnostic report for the given run."""
     with _connect() as conn:
         conn.execute("""
             INSERT INTO analyst_reports (run_id, timestamp, report_text)
@@ -116,7 +122,8 @@ def log_analyst_report(run_id: str, report: str):
         """, (run_id, time.time(), report))
 
 
-def get_recent_metrics(limit: int = 20) -> list[dict]: # gets 20 most recent metric collections
+def get_recent_metrics(limit: int = 20) -> list[dict]:
+    """Return the most recent metric snapshots across all runs, newest first."""
     with _connect() as conn:
         rows = conn.execute("""
             SELECT * FROM gpu_metrics
@@ -126,7 +133,8 @@ def get_recent_metrics(limit: int = 20) -> list[dict]: # gets 20 most recent met
     return [dict(row) for row in rows]
 
 
-def get_run_history() -> list[dict]: # gets history of validation runs
+def get_run_history() -> list[dict]:
+    """Return every validation run's id, timestamp, and overall pass/fail, newest first."""
     with _connect() as conn:
         rows = conn.execute("""
             SELECT run_id, timestamp, overall_passed
@@ -136,7 +144,8 @@ def get_run_history() -> list[dict]: # gets history of validation runs
     return [dict(row) for row in rows]
 
 
-def get_metrics_for_run(run_id: str) -> list[dict]: # gets metrics based on inputted run_id
+def get_metrics_for_run(run_id: str) -> list[dict]:
+    """Return all metric snapshots logged for a specific run, oldest first."""
     with _connect() as conn:
         rows = conn.execute("""
             SELECT * FROM gpu_metrics
@@ -147,6 +156,7 @@ def get_metrics_for_run(run_id: str) -> list[dict]: # gets metrics based on inpu
 
 
 def get_analyst_report(run_id: str) -> str | None:
+    """Return the most recent analyst report text for a run, or None if none exists."""
     with _connect() as conn:
         row = conn.execute("""
             SELECT report_text FROM analyst_reports
@@ -157,7 +167,8 @@ def get_analyst_report(run_id: str) -> str | None:
     return row["report_text"] if row else None
 
 
-def get_historical_averages() -> dict: # gets averages of all metrics, used in validator.py to detect regression
+def get_historical_averages() -> dict:
+    """Return the all-time average of each metric across logged runs, used for regression detection."""
     with _connect() as conn:
         row = conn.execute("""
             SELECT

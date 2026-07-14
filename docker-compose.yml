@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    container_name: gpu-validation-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./gpu_validation.db:/app/gpu_validation.db
+    restart: unless-stopped
+    # GPU passthrough for the /validate, /run/{workload_type}, and /regression endpoints,
+    # which call NVML and cupy directly. Requires the NVIDIA Container Toolkit on the host.
+    # Remove this block to run the API container without GPU access (e.g. for pure API dev).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

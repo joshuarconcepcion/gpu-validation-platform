@@ -1,27 +1,35 @@
+"""pynvml-based GPU metric collection (utilization, memory, temperature,
+power, fan speed, clocks) for the RTX 3090 Ti."""
+
 import time
 import pynvml # python nvidia management library
-from dataclasses import dataclass 
+from dataclasses import dataclass
 
 
 @dataclass
 class GPUMetrics: # holds "snapshot" of gpu metric data + used dataclass instead of dict for types (safety when passing GPUMetrics to different files)
+    """A single point-in-time snapshot of GPU hardware metrics."""
     timestamp: float # captures current time of data snapshot
     gpu_utilization_pct: float # gets percent of current gpu utilization
     memory_used_mb: float # used memory
     memory_total_mb: float # total memory
     temperature_c: float # temperature of gpu core in celsius
-    power_draw_w: float 
-    fan_speed_pct: float 
+    power_draw_w: float
+    fan_speed_pct: float
     clock_graphics_mhz: float # measures speed of running shader cores
     clock_memory_mhz: float # measures speed of VRAM (GDDR6X for 3090TI)
 
 
 class GPUInstrumentation:
+    """Wraps NVML to initialize a device handle and collect metric snapshots from it."""
+
     def __init__(self, device_index: int = 0):
+        """Initialize the NVML driver connection and get a handle to the target GPU."""
         pynvml.nvmlInit() # loads nvml library and initalizes connection to driver
         self._gpu = pynvml.nvmlDeviceGetHandleByIndex(device_index) # using opaque token to hold gpu (device_index = 0 to target first gpu)
 
     def collect(self) -> GPUMetrics:
+        """Query NVML for the current utilization, memory, temperature, power, fan, and clock readings."""
         util = pynvml.nvmlDeviceGetUtilizationRates(self._gpu) # returns gpu and memory utilization but only using gpu here
         mem = pynvml.nvmlDeviceGetMemoryInfo(self._gpu)
         temp = pynvml.nvmlDeviceGetTemperature(self._gpu, pynvml.NVML_TEMPERATURE_GPU) # second parameter targets gpu core temperature specifically
@@ -31,7 +39,7 @@ class GPUInstrumentation:
         except Exception:
             fan = 0.0 # prevents crashing if fan not detected
         # returns clock speed as MHz:
-        clock_gr = pynvml.nvmlDeviceGetClockInfo(self._gpu, pynvml.NVML_CLOCK_GRAPHICS) 
+        clock_gr = pynvml.nvmlDeviceGetClockInfo(self._gpu, pynvml.NVML_CLOCK_GRAPHICS)
         clock_mem = pynvml.nvmlDeviceGetClockInfo(self._gpu, pynvml.NVML_CLOCK_MEM)
         return GPUMetrics(
             timestamp=time.time(),
@@ -46,11 +54,14 @@ class GPUInstrumentation:
         )
 
     def close(self):
+        """Release the NVML driver connection."""
         pynvml.nvmlShutdown() # releases connection to driver
 
-    # makes sure nvmlShutdown is always called after block ends using with statement in test_instrumentation.py:
+    # makes sure nvmlShutdown is always called after block ends using with statement in test_hardware.py:
     def __enter__(self):
+        """Support `with GPUInstrumentation() as gpu:` usage."""
         return self
 
     def __exit__(self, *_):
+        """Ensure NVML is shut down when the with-block exits."""
         self.close()

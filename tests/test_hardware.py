@@ -1,6 +1,9 @@
+"""Integration tests against real hardware via NVML. Requires an NVIDIA GPU
+and drivers on the machine running pytest — skip on machines without one."""
+
 import time
 
-from src.instrumentation import GPUInstrumentation, GPUMetrics
+from hardware.gpu_monitor import GPUInstrumentation, GPUMetrics
 
 
 def test_metrics_fields(): # tests that metrics field access works w/ hard-coded mock numbers
