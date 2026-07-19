@@ -167,6 +167,30 @@ def get_analyst_report(run_id: str) -> str | None:
     return row["report_text"] if row else None
 
 
+def get_validation_result_for_run(run_id: str) -> dict | None:
+    """Return the most recent validation result row (with results_json) for a run, or None."""
+    with _connect() as conn:
+        row = conn.execute("""
+            SELECT run_id, timestamp, overall_passed, results_json
+            FROM validation_results
+            WHERE run_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (run_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_all_validation_results() -> list[dict]:
+    """Return every validation result row (with results_json), oldest first."""
+    with _connect() as conn:
+        rows = conn.execute("""
+            SELECT run_id, timestamp, overall_passed, results_json
+            FROM validation_results
+            ORDER BY timestamp ASC
+        """).fetchall()
+    return [dict(row) for row in rows]
+
+
 def get_historical_averages() -> dict:
     """Return the all-time average of each metric across logged runs, used for regression detection."""
     with _connect() as conn:

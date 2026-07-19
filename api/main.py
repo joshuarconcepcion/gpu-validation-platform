@@ -1,10 +1,13 @@
 """FastAPI HTTP layer. This is the composition root: it is the only module
-allowed to import from hardware, validation, storage, and agents together,
-since its job is to wire those independent modules into request handlers."""
+allowed to import from hardware, validation, storage, agents, and rag
+together, since its job is to wire those independent modules into request
+handlers."""
 
+import functools
 import time
 import uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 
 from hardware.gpu_monitor import GPUInstrumentation
 from validation.benchmarks import (
@@ -27,10 +30,26 @@ from storage.db import (
     get_historical_averages,
 )
 from agents.analyst import analyze_validation_run
+from rag.embedder import get_embeddings
+from rag.ingestion import documents_from_run, documents_from_all_runs
+from rag.store import add_documents, get_store
+from rag.retriever import get_retriever
+from rag.pipeline import query as run_rag_query, stream_query as run_rag_stream_query
 
 app = FastAPI(title="GPU Validation Platform")
 
 init_db()
+
+
+@functools.lru_cache(maxsize=1)
+def _embeddings():
+    """Load the HuggingFace embedding model once and reuse it across requests."""
+    return get_embeddings()
+
+
+def _rag_store():
+    """Open the persistent Chroma store, creating it on first use."""
+    return get_store(_embeddings())
 
 WORKLOADS = {
     "light": light_workload,
@@ -144,3 +163,60 @@ def regression_check():
         "historical_averages": historical,
         "regression": regression,
     }
+
+
+@app.post("/rag/ingest/{run_id}")
+def rag_ingest_run(run_id: str):
+    """Embed and store the failed-check events for one validation run."""
+    documents = documents_from_run(run_id)
+    if not documents:
+        raise HTTPException(status_code=404, detail=f"No failed checks found for run_id: {run_id}")
+    add_documents(_rag_store(), documents)
+    return {"run_id": run_id, "documents_ingested": len(documents)}
+
+
+@app.post("/rag/ingest/all")
+def rag_ingest_all():
+    """Embed and store failed-check events for every validation run in the database."""
+    documents = documents_from_all_runs()
+    add_documents(_rag_store(), documents)
+    return {"documents_ingested": len(documents)}
+
+
+@app.get("/rag/search")
+def rag_search(q: str, k: int = 5, gpu_model: str | None = None):
+    """Search the vector store for historical failures similar to the query text."""
+    retriever = get_retriever(_rag_store(), k=k, gpu_model=gpu_model)
+    results = retriever.invoke(q)
+    return {
+        "query": q,
+        "results": [
+            {"page_content": doc.page_content, "metadata": doc.metadata}
+            for doc in results
+        ],
+    }
+
+
+@app.post("/rag/query")
+def rag_query_endpoint(
+    question: str = Body(..., embed=True),
+    session_id: str = Body("default", embed=True),
+):
+    """Ask the RAG chain a diagnostic question, grounded in similar past failures."""
+    retriever = get_retriever(_rag_store())
+    answer = run_rag_query(question, retriever, session_id=session_id)
+    return {"question": question, "session_id": session_id, "answer": answer}
+
+
+@app.post("/rag/query/stream")
+def rag_query_stream_endpoint(
+    question: str = Body(..., embed=True),
+    session_id: str = Body("default", embed=True),
+):
+    """Same as /rag/query, but streams the answer back as plain text chunks as
+    Claude generates them, instead of waiting for the full response."""
+    retriever = get_retriever(_rag_store())
+    return StreamingResponse(
+        run_rag_stream_query(question, retriever, session_id=session_id),
+        media_type="text/plain",
+    )

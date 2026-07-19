@@ -5,3 +5,11 @@ pytest
 cupy-cuda12x
 anthropic
 python-dotenv
+langchain
+langchain-core
+langchain-anthropic
+langchain-community
+langchain-chroma
+langgraph
+chromadb
+sentence-transformers

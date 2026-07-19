@@ -18,5 +18,8 @@ __pycache__/
 gpu_validation.db
 *.sqlite
 
+# RAG vector store
+chroma_store/
+
 # OS
 .DS_Store
